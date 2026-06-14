@@ -1,0 +1,69 @@
+{
+  "name": "mip-chart",
+  "version": "0.2.0",
+  "description": "Google Maps for time-series data — level-of-detail charting that streams and decimates to the viewport. Framework-agnostic, uPlot-based.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mark Hammond",
+  "homepage": "https://github.com/markhammond/mip-chart#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markhammond/mip-chart.git"
+  },
+  "bugs": {
+    "url": "https://github.com/markhammond/mip-chart/issues"
+  },
+  "keywords": [
+    "time-series",
+    "chart",
+    "charting",
+    "dataviz",
+    "uplot",
+    "downsampling",
+    "decimation",
+    "lttb",
+    "level-of-detail",
+    "virtualization",
+    "streaming",
+    "candlestick",
+    "financial"
+  ],
+  "main": "./dist/mip-chart.js",
+  "module": "./dist/mip-chart.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/mip-chart.js"
+    },
+    "./style.css": "./dist/mip-chart.css"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node build.mjs && npm run types",
+    "types": "tsc -p tsconfig.build.json",
+    "dev": "node build.mjs --serve",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
