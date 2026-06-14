@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>mip-chart — live example</title>
+  <link rel="stylesheet" href="dist/main.css" />
+  <style>
+    body { margin: 0; background: #14141c; color: #cfcfd6; font: 13px system-ui, sans-serif; }
+    #toolbar { padding: 8px 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    #toolbar button { background: #23232f; color: #cfcfd6; border: 1px solid #3a3a4a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+    #toolbar button:hover { background: #2e2e3e; }
+    #toolbar .sep { width: 12px; }
+    #status { margin-left: auto; font-family: monospace; }
+    #status.loading { color: #e2b714; }
+    #status.error { color: #ef5350; }
+    #chart { padding: 0 12px 12px; }
+    .uplot { background: #14141c; }
+    .u-title { color: #9a9ab0; font-size: 13px; }
+    .u-legend { color: #cfcfd6; }
+    #log { font-family: monospace; font-size: 11px; color: #6a6a80; padding: 4px 12px; height: 72px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button data-range="3h">3h</button>
+    <button data-range="6h">6h</button>
+    <button data-range="1d">1d</button>
+    <button data-range="1w">1w</button>
+    <button data-range="1m">1m</button>
+    <button data-range="6m">6m</button>
+    <span class="sep"></span>
+    <input type="date" id="jump" />
+    <span class="sep"></span>
+    <label><input type="checkbox" id="pct" /> % scale</label>
+    <label><input type="checkbox" id="baseline-vis" checked /> baseline series visible</label>
+    <span id="status">idle</span>
+  </div>
+  <div id="chart"></div>
+  <div id="log"></div>
+  <script type="module" src="dist/main.js"></script>
+</body>
+</html>
