@@ -320,6 +320,11 @@ export interface NavigatorOptions {
    *  it stays a fixed physical width on any display. The host owns this
    *  device-capability / perception judgment; the library only tapers toward it. */
   minLineWidthDevicePx?: number;
+  /** Source bars/px at which the adaptive line width reaches its floor (default
+   *  100). The line tapers base→floor linearly in log10(density) up to here, so a
+   *  higher value = gentler taper. The other half of the (subjective) line-width
+   *  calibration the host owns, alongside minLineWidthDevicePx. */
+  lineWidthDensityFloor?: number;
   /** @deprecated symmetric margin; superseded by scaleMargins. */
   yMarginFrac?: number;
   /** Lightweight-charts price scale margins (fractions of pane height kept

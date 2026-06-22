@@ -1,6 +1,6 @@
 {
   "name": "mip-chart",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Google Maps for time-series data — level-of-detail charting that streams and decimates to the viewport. Framework-agnostic, uPlot-based.",
   "type": "module",
   "license": "MIT",

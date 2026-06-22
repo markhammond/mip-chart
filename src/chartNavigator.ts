@@ -876,9 +876,10 @@ export class ChartNavigator {
               if (sx?.min == null || sx?.max == null || !(cssPx > 0)) return;
               const barsPerPx = (sx.max - sx.min) / this.opts.barMs / cssPx;
               const floor = (this.opts.minLineWidthDevicePx ?? 1) / dpr; // device hairline
+              const densityFloor = this.opts.lineWidthDensityFloor ?? DENSITY_FLOOR_BARS_PER_PX;
               const progress = Math.min(
                 1,
-                Math.max(0, Math.log10(barsPerPx) / Math.log10(DENSITY_FLOOR_BARS_PER_PX)),
+                Math.max(0, Math.log10(barsPerPx) / Math.log10(densityFloor)),
               );
               for (const al of pane.adaptiveLines) {
                 const s = u.series[al.idx];
