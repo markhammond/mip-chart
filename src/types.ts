@@ -18,7 +18,52 @@ export type SeriesRenderer =
   | 'band'
   | 'markers'
   | 'state' // stepped line over state ordinals
-  | 'state-bars'; // filled bars colored by ordinal
+  | 'state-bars' // filled bars colored by ordinal
+  | 'vrect' // shaded time spans (sessions, event windows)
+  | 'vline'; // vertical lines at event times
+
+/** Excel-style hatch overlay for a span category. */
+export interface SpanHatch {
+  pattern:
+    | 'diagonal'
+    | 'back-diagonal'
+    | 'cross'
+    | 'diagonal-cross'
+    | 'horizontal'
+    | 'vertical'
+    | 'dots';
+  /** Hatch ink colour (default a translucent grey). */
+  color?: string;
+  /** Line pitch in CSS px (default 6). */
+  spacingPx?: number;
+  /** Line width (dot radius for 'dots') in CSS px (default 1). */
+  widthPx?: number;
+}
+
+/** Style of one span/line category (vrect/vline `categories`, by ordinal). */
+export interface SpanStyle {
+  /** Category name: legend item and the `{category}` hover placeholder. */
+  name: string;
+  /** Span fill, any CSS colour incl. alpha. vline: line colour when `edge` is unset. */
+  fill?: string;
+  hatch?: SpanHatch;
+  /** vrect: boundary lines. vline: the line itself. */
+  edge?: {
+    color: string;
+    widthPx?: number;
+    dash?: number[];
+    /** vrect only (default 'both'). */
+    sides?: 'both' | 'start' | 'end';
+  };
+  /** Static text drawn once, in the topmost visible pane the series covers. */
+  label?: { text: string; position?: 'top-left' | 'top' | 'inside' };
+  /** vrect only: line, band and state-bar series in the covered panes don't
+   *  connect across (or draw inside) these spans. */
+  breaks?: boolean;
+  /** Minimum rendered span width (CSS px) at which `breaks` applies, so wide
+   *  zooms stay continuous (default 3). */
+  breakMinPx?: number;
+}
 
 /** One vertically stacked subplot sharing the unified X (time) axis. */
 export interface PaneDef {
@@ -67,8 +112,25 @@ export interface SeriesDef {
    *  line/markers/state: [value]
    *  candlestick:        [open, high, low, close]
    *  band:               [upper, lower]
+   *  vrect:              [end, category?] — xs are span starts, `end` is UTC ms
+   *  vline:              [category?]      — xs are line times
+   * Span/line category defaults to 0. Providers return every span that
+   * OVERLAPS the requested range (a span may start before `range.from`). The
+   * wire format stays numeric; per-span text comes via requestHoverDetail.
    */
   columns: string[];
+  /** vrect/vline: panes to draw in (default `[paneId]`); `paneId` stays the
+   *  home pane for legend ordering. */
+  panes?: string[] | 'all';
+  /** vrect/vline: 'below' draws over the grid but under the series (default);
+   *  'above' draws over everything. */
+  layer?: 'below' | 'above';
+  /** vrect/vline: category ordinal → style. One legend item per category when
+   *  there are several (keyed `${key}#${ordinal}`). */
+  categories?: SpanStyle[];
+  /** vrect: spans narrower than this (CSS px) at the current zoom are dropped;
+   *  same-category spans closer than 1px merge (default 1). */
+  minWidthPx?: number;
   /** Designated percentage-mode baseline. At most one per pane. */
   baseline?: boolean;
   /**
@@ -111,9 +173,11 @@ export interface SeriesDef {
    * Recipe-defined hover label template (hoverFormat.ts — a typed,
    * injection-free subset of the Plotly-style hovertemplate convention).
    * Placeholders: {label},
-   * {value[:FMT]}, {col.NAME[:FMT]}, {x[:date:PATTERN]}, {state};
+   * {value[:FMT]}, {col.NAME[:FMT]}, {col.NAME:date:PATTERN}, {x[:date:PATTERN]},
+   * {state}, {category};
    * FMT = .Nf | .Ns | .N%; '\n' adds indented rows. Defaults: lines show
-   * 'label: value'; candles show a compact O/H/L/C row.
+   * 'label: value'; candles show a compact O/H/L/C row; vrect/vline show
+   * 'label: category'.
    */
   hoverTemplate?: string;
   /**

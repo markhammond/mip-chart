@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>mip-chart — spans &amp; breaks</title>
+  <link rel="stylesheet" href="dist/spans.css" />
+  <style>
+    body { margin: 0; background: #f4f5f7; color: #2a2f3a; font: 13px system-ui, sans-serif; }
+    #toolbar { padding: 8px 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    #toolbar button { background: #fff; color: #2a2f3a; border: 1px solid #d5d8de; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+    #toolbar button:hover { background: #eef0f3; }
+    #toolbar .sep { width: 12px; }
+    #toolbar a { margin-left: auto; color: #5a6170; }
+    #chart, #frozen { margin: 0 12px 12px; background: #fff; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button data-range="1d">1d</button>
+    <button data-range="1w">1w</button>
+    <button data-range="1m">1m</button>
+    <button data-range="3m">3m</button>
+    <button data-range="1y">1y</button>
+    <button data-range="2y">2y</button>
+    <span class="sep"></span>
+    <button id="snapshot" title="Render a frozen offline snapshot below">Snapshot ↓</button>
+    <a href="index.html">main example →</a>
+  </div>
+  <div id="chart"></div>
+  <div id="frozen" style="display:none"></div>
+  <script type="module" src="dist/spans.js"></script>
+</body>
+</html>

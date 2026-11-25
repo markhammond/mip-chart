@@ -52,6 +52,10 @@ export class LegendStrip {
         swatch.style.cssText =
           `width:10px;height:10px;border-radius:2px;background:${item.color};` +
           'display:inline-block;';
+        if (item.swatch) {
+          swatch.style.background = item.swatch;
+          swatch.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.12)';
+        }
         const label = document.createElement('span');
         label.textContent = item.label;
 

@@ -7,7 +7,15 @@ export class SeriesStore {
   xs: UtcMillis[] = [];
   columns: Record<string, Array<number | null>> = {};
 
-  constructor(private readonly columnNames: string[]) {
+  /**
+   * @param spanEndColumn For span stores (vrect): the column holding each
+   *   span's end, so eviction keeps spans that started earlier but still
+   *   overlap the kept window.
+   */
+  constructor(
+    private readonly columnNames: string[],
+    private readonly spanEndColumn?: string,
+  ) {
     for (const c of columnNames) this.columns[c] = [];
   }
 
@@ -63,13 +71,33 @@ export class SeriesStore {
     this.columns = outCols;
   }
 
-  /** Drop points outside `keep`. */
+  /** Drop points outside `keep` (spans: those not overlapping it). */
   evictOutside(keep: TimeRange): void {
+    if (this.spanEndColumn !== undefined) {
+      this.evictSpansOutside(keep);
+      return;
+    }
     const lo = lowerBound(this.xs, keep.from);
     const hi = lowerBound(this.xs, keep.to);
     if (lo === 0 && hi === this.xs.length) return;
     this.xs = this.xs.slice(lo, hi);
     for (const c of this.columnNames) this.columns[c] = this.columns[c]!.slice(lo, hi);
+  }
+
+  private evictSpansOutside(keep: TimeRange): void {
+    const ends = this.columns[this.spanEndColumn!] ?? [];
+    const hi = lowerBound(this.xs, keep.to);
+    const kept: number[] = [];
+    for (let i = 0; i < hi; i++) {
+      const end = ends[i] ?? this.xs[i]!;
+      if (end > keep.from) kept.push(i);
+    }
+    if (kept.length === this.xs.length) return;
+    this.xs = kept.map((i) => this.xs[i]!);
+    for (const c of this.columnNames) {
+      const col = this.columns[c]!;
+      this.columns[c] = kept.map((i) => col[i] ?? null);
+    }
   }
 
   /** Index range [lo, hi) of points with x in [from, to). */

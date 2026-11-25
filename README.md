@@ -39,6 +39,9 @@ points drawn stays roughly constant no matter how far you zoom out.
 - **Rendering** — constant-width candles, shape-preserving (PCHIP) line curves,
   density-adaptive line width (thins toward a device-pixel hairline when zoomed
   out), causal hover values, UTC gridlines.
+- **Span series** — `vrect` shaded time spans (sessions, event windows) and
+  `vline` event lines, with Excel-style hatching, multi-pane extent, and
+  optional line breaks across closed sessions ([details](#span-series--vrect--vline)).
 - **Minimap** — full-extent overview scrubber driven purely by the time axis.
 - **Offline snapshot export** — serialize the current viewport to a
   self-contained HTML file that renders with no backend.
@@ -102,6 +105,37 @@ fragments are left uncached so the range stays re-fetchable once data exists.
 
 See `NavigationRequest` and `SeriesFragment` in [`src/types.ts`](./src/types.ts)
 for the full field-by-field contract.
+
+## Span series — `vrect` / `vline`
+
+Shaded timespans and vertical lines are ordinary keyed series, fetched through
+the same fragments. They never join the pane's unified timeline, so they don't
+touch Y-autofit, percent mode or `trueExtrema`.
+
+- `vrect`: `xs` are span starts (UTC ms); columns `[end, category?]`.
+- `vline`: `xs` are line times; columns `[category?]`.
+- Category defaults to 0 and indexes `categories` (fill, `hatch`, `edge`,
+  `label`). Several categories ⇒ one legend item each, keyed `${key}#${ordinal}`.
+- Return every span that **overlaps** the requested range. Eviction keeps spans
+  that started earlier but still overlap the kept window.
+- `panes: 'all' | string[]` draws across subplots; `layer: 'below' | 'above'`.
+- `breaks: true` on a category stops line, band and state-bar series in the
+  covered panes from connecting across (or drawing inside) those spans, once a
+  span renders at least `breakMinPx` (default 3) wide.
+- Hover adds a row per covering span / nearby vline via `hoverTemplate`
+  (`{category}`, `{col.end:date:HH:mm}`); per-span text comes from
+  `requestHoverDetail` with `{ seriesKey, x: spanStart }`.
+
+```ts
+{ key: 'sessions', paneId: 'price', panes: 'all', label: 'Sessions', color: '#888',
+  renderer: 'vrect', columns: ['end', 'category'],
+  categories: [
+    { name: 'Closed', fill: 'rgba(120,120,140,.08)', hatch: { pattern: 'diagonal' }, breaks: true },
+    { name: 'Overnight', fill: 'rgba(120,120,140,.07)', breaks: true },
+  ] }
+```
+
+See `examples/spans.html` (`npm run dev`, then open `/spans.html`).
 
 ## Develop
 

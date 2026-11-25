@@ -50,7 +50,7 @@ export class Minimap {
   private hasData = false;
   /** Recipe-driven event dots (e.g. undefined-factor markers), drawn over the
    *  data shadow near the bottom of the strip. */
-  private overlay: Array<{ t: number; color: string }> = [];
+  private overlay: Array<{ t: number; to?: number; color: string }> = [];
 
   constructor(private readonly container: HTMLElement, private readonly opts: MinimapOptions) {
     const { axis } = opts;
@@ -102,6 +102,14 @@ export class Minimap {
                 ctx.save();
                 for (const p of this.overlay) {
                   const x = u.valToPos(p.t, 'x', true);
+                  if (p.to != null) {
+                    // Span: a thin bar along the bottom, at least 1 device px wide.
+                    const x1 = u.valToPos(p.to, 'x', true);
+                    if (x1 < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(x, y - r, Math.max(dpr, x1 - x), r);
+                    continue;
+                  }
                   if (x < u.bbox.left - r || x > u.bbox.left + u.bbox.width + r) continue;
                   ctx.fillStyle = p.color;
                   ctx.beginPath();
@@ -174,8 +182,9 @@ export class Minimap {
     this.positionBrush();
   }
 
-  /** Replace the event-dot overlay (timestamp + colour), drawn over the shadow. */
-  setOverlay(points: Array<{ t: UtcMillis; color: string }>): void {
+  /** Replace the event overlay drawn over the shadow: dots at `t`, or bars
+   *  from `t` to `to` for spans. */
+  setOverlay(points: Array<{ t: UtcMillis; to?: UtcMillis; color: string }>): void {
     this.overlay = points;
     this.plot.redraw();
   }
