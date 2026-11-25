@@ -6,8 +6,10 @@
 //   {label}                 series label
 //   {value} {value:FMT}     the series' primary value
 //   {col.NAME} {col.NAME:FMT}  another column of the same series at this row
+//   {col.NAME:date:PATTERN}    that column read as a UTC timestamp (span end)
 //   {x} {x:date:PATTERN}    the point's UTC timestamp
 //   {state}                 the pane's StateName for the (rounded) value
+//   {category}              span/line category name (vrect/vline)
 //   {sign:POS|NEG}          POS when value ≥ 0, NEG when < 0 (verb pick,
 //                           e.g. {sign:Up|Down} on a signed value)
 // FMT:
@@ -24,6 +26,8 @@ export interface HoverContext {
   value: number | null;
   column(name: string): number | null;
   stateName?: string | null;
+  /** vrect/vline category name. */
+  category?: string | null;
 }
 
 const SI_STEPS: Array<[number, string]> = [
@@ -84,6 +88,8 @@ export function renderHoverTemplate(template: string, ctx: HoverContext): string
         return formatHoverNumber(ctx.value, fmt);
       case 'state':
         return ctx.stateName ?? '—';
+      case 'category':
+        return ctx.category ?? '—';
       case 'sign': {
         if (ctx.value == null || !Number.isFinite(ctx.value)) return '—';
         const [pos, neg] = (fmt ?? '').split('|');
@@ -94,7 +100,11 @@ export function renderHoverTemplate(template: string, ctx: HoverContext): string
         return new Date(ctx.x).toISOString();
       default:
         if (head!.startsWith('col.')) {
-          return formatHoverNumber(ctx.column(head!.slice(4)), fmt);
+          const v = ctx.column(head!.slice(4));
+          if (fmt?.startsWith('date:')) {
+            return v == null || !Number.isFinite(v) ? '—' : formatHoverDate(v, fmt.slice(5));
+          }
+          return formatHoverNumber(v, fmt);
         }
         return '—';
     }

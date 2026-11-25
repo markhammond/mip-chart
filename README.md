@@ -36,10 +36,16 @@ points drawn stays roughly constant no matter how far you zoom out.
 - **Per-pane Y-autofit** — tracks the visible window, log-aware, OHLC-aware.
 - **Gestures** — drag-pan, wheel-zoom about the cursor, double-click reset,
   shift-drag box zoom, velocity-projected prefetch.
-- **Rendering** — constant-width candles, shape-preserving (PCHIP) line curves,
+- **Rendering** — constant-width candles (aggregated candles sit over the
+  interval they summarise), shape-preserving (PCHIP) line curves,
   density-adaptive line width (thins toward a device-pixel hairline when zoomed
   out), causal hover values, UTC gridlines.
-- **Minimap** — full-extent overview scrubber driven purely by the time axis.
+- **Span series** — `vrect` shaded time spans (sessions, event windows) and
+  `vline` event lines, with line hatches, checkerboards and Excel's 18 fill
+  patterns, styled labels, multi-pane extent, and optional line breaks across
+  closed sessions ([details](#span-series--vrect--vline)).
+- **Minimap** — full-extent overview scrubber driven purely by the time axis,
+  with event marks that show from the first frame.
 - **Offline snapshot export** — serialize the current viewport to a
   self-contained HTML file that renders with no backend.
 
@@ -102,6 +108,63 @@ fragments are left uncached so the range stays re-fetchable once data exists.
 
 See `NavigationRequest` and `SeriesFragment` in [`src/types.ts`](./src/types.ts)
 for the full field-by-field contract.
+
+## Span series — `vrect` / `vline`
+
+Shaded timespans and vertical lines are ordinary keyed series, fetched through
+the same fragments. They never join the pane's unified timeline, so they don't
+touch Y-autofit, percent mode or `trueExtrema`.
+
+- `vrect`: `xs` are span starts (UTC ms); columns `[end, category?]`.
+- `vline`: `xs` are line times; columns `[category?]`.
+- Category defaults to 0 and indexes `categories` (fill, `hatch`, `edge`,
+  `label`). Several categories ⇒ one legend item each, keyed `${key}#${ordinal}`.
+- Return every span that **overlaps** the requested range. Eviction keeps spans
+  that started earlier but still overlap the kept window.
+- `panes: 'all' | string[]` draws across subplots; `layer: 'below' | 'above'`.
+- `breaks: true` on a category stops line, band and state-bar series in the
+  covered panes from connecting across (or drawing inside) those spans, once a
+  span renders at least `breakMinPx` (default 3) wide.
+- Hover adds a row per covering span / nearby vline via `hoverTemplate`
+  (`{category}`, `{col.end:date:HH:mm}`); per-span text comes from
+  `requestHoverDetail` with `{ seriesKey, x: spanStart }`. Over data, spans are
+  read at the hovered sample, so a session row agrees with the bar shown; over a
+  gap (a weekend) they are read at the cursor.
+
+**Patterns.** `hatch.pattern` takes a drawn pattern — `diagonal`,
+`back-diagonal`, `cross`, `diagonal-cross`, `horizontal`, `vertical`, `dots`,
+`checker` — or one of Excel's fill patterns by its Office Open XML name:
+`solid`, `darkGray` (75%), `mediumGray` (50%), `lightGray` (25%), `gray125`
+(12.5%), `gray0625` (6.25%), `darkHorizontal`, `darkVertical`, `darkDown`,
+`darkUp`, `darkGrid`, `darkTrellis`, `lightHorizontal`, `lightVertical`,
+`lightDown`, `lightUp`, `lightGrid`, `lightTrellis` (bitmaps and Excel's menu
+names in `EXCEL_PATTERNS`). `spacingPx` is the repeat period: line pitch, the
+two-square period for `checker`, or the 8×8 bitmap's size for Excel patterns
+(default 8, one CSS px per bitmap pixel). Patterns are anchored to time, so they
+pan with the data.
+
+**Labels.** `label: { text, position?, color?, fontSizePx?, fontWeight?,
+minFontSizePx?, halo? }`. `\n` stacks lines. `color` defaults to the category's
+ink; size and weight default to the legend entries' computed font. A label too
+wide for its span shrinks to fit, down to `minFontSizePx` (default 10), and is
+hidden below that. `halo: { color, widthPx? }` outlines the glyphs so text stays
+legible over candles.
+
+**Minimap marks.** `minimapOverlay: true` marks a series' events as they are
+fetched. For marks that show from the first frame, pass them with the overview:
+`navigator.acceptOverview(xs, values, [{ t, color }, …])` (`to` draws a bar).
+They are kept in snapshots.
+
+```ts
+{ key: 'sessions', paneId: 'price', panes: 'all', label: 'Sessions', color: '#888',
+  renderer: 'vrect', columns: ['end', 'category'],
+  categories: [
+    { name: 'Closed', fill: 'rgba(120,120,140,.08)', hatch: { pattern: 'diagonal' }, breaks: true },
+    { name: 'Overnight', fill: 'rgba(120,120,140,.07)', breaks: true },
+  ] }
+```
+
+See `examples/spans.html` (`npm run dev`, then open `/spans.html`).
 
 ## Develop
 

@@ -6,6 +6,8 @@ export interface LegendItem {
   key: string; // series key
   label: string;
   color: string;
+  /** CSS `background` for the swatch when it isn't a flat colour (span hatch). */
+  swatch?: string;
   group: string; // '' = ungrouped
   visible: boolean;
 }

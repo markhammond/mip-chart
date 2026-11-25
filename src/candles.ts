@@ -28,6 +28,44 @@ export interface CandlePluginOptions {
   minPitchPx?: number;
 }
 
+/**
+ * Duration each data row stands for: the tightest spacing between bars with an
+ * open and close, rounded to whole bars. Rows the source has already aggregated
+ * (bucket-start x on a coarser grid) report that bucket; native rows report
+ * `barMs`.
+ */
+export function memberStepMs(
+  xs: ArrayLike<number>,
+  opens: ArrayLike<number | null | undefined>,
+  closes: ArrayLike<number | null | undefined>,
+  barMs: number,
+): number {
+  let step = Number.POSITIVE_INFINITY;
+  let prev = Number.NaN;
+  for (let i = 0; i < xs.length; i++) {
+    if (opens[i] == null || closes[i] == null) continue;
+    const gap = xs[i]! - prev;
+    if (gap > 0 && gap < step) step = gap;
+    prev = xs[i]!;
+  }
+  return Number.isFinite(step) && step > barMs ? Math.round(step / barMs) * barMs : barMs;
+}
+
+/**
+ * Draw-time grid slot and centre for a pitch floor of `minPitchMs`. The slot is a
+ * whole multiple of the member step, so it nests on the source's buckets. The
+ * centre is the mean open time of the slot's bars: a single native bar stays on
+ * its open (level with point series at bar open times), and an aggregate sits
+ * over the interval it summarises rather than half a slot early.
+ */
+export function candleGroupMs(minPitchMs: number, memberMs: number): number {
+  return Math.max(1, Math.ceil(minPitchMs / memberMs)) * memberMs;
+}
+
+export function candleSlotCentreMs(bucket: number, groupMs: number, barMs: number): number {
+  return bucket * groupMs + (groupMs - barMs) / 2;
+}
+
 export function candlestickPlugin(o: CandlePluginOptions): uPlot.Plugin {
   const up = o.upColor ?? '#26a69a';
   const down = o.downColor ?? '#ef5350';
@@ -59,7 +97,7 @@ export function candlestickPlugin(o: CandlePluginOptions): uPlot.Plugin {
         const spanMs = xMax - xMin;
         const pxPerMs = spanMs > 0 ? u.bbox.width / spanMs : 0;
         const minPitchMs = pxPerMs > 0 ? minPitchCanvas / pxPerMs : o.barMs;
-        const groupMs = Math.max(1, Math.ceil(minPitchMs / o.barMs)) * o.barMs;
+        const groupMs = candleGroupMs(minPitchMs, memberStepMs(xs, opens, closes, o.barMs));
         const loBucket = Math.floor(xMin / groupMs);
         const hiBucket = Math.floor(xMax / groupMs);
 
@@ -80,11 +118,11 @@ export function candlestickPlugin(o: CandlePluginOptions): uPlot.Plugin {
           if (b < loBucket || b > hiBucket) continue;
           if (b !== bucket) {
             bucket = b;
-            // Center on the BUCKET GRID SLOT (b·groupMs), not the first bar, for
-            // uniform pitch. groupMs is a barMs multiple and opens are barMs-
-            // aligned, so in the identity case the slot is the bar time and
-            // candles stay pixel-aligned with the EMA/VWAP points.
-            centers.push(Math.round(u.valToPos(b * groupMs, 'x', true)));
+            // Center on the BUCKET GRID SLOT, not the first bar, for uniform
+            // pitch: at the slot's mean bar open (candleSlotCentreMs). In the
+            // identity case that is the bar time, so candles stay pixel-aligned
+            // with the EMA/VWAP points.
+            centers.push(Math.round(u.valToPos(candleSlotCentreMs(b, groupMs, o.barMs), 'x', true)));
             aggOpen.push(op); // open = first
             aggHigh.push(hi);
             aggLow.push(lo);

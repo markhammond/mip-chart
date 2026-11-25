@@ -19,6 +19,13 @@ export class LegendStrip {
     this.render();
   }
 
+  /** The entries' computed font, or null before the strip is laid out. */
+  entryFont(): { sizePx: number; weight: string; family: string } | null {
+    const c = getComputedStyle(this.el);
+    const sizePx = parseFloat(c.fontSize);
+    return sizePx > 0 && c.fontFamily ? { sizePx, weight: c.fontWeight || '400', family: c.fontFamily } : null;
+  }
+
   /** Re-render after any model change (cheap: tens of nodes). */
   render(): void {
     this.el.innerHTML = '';
@@ -52,6 +59,10 @@ export class LegendStrip {
         swatch.style.cssText =
           `width:10px;height:10px;border-radius:2px;background:${item.color};` +
           'display:inline-block;';
+        if (item.swatch) {
+          swatch.style.background = item.swatch;
+          swatch.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.12)';
+        }
         const label = document.createElement('span');
         label.textContent = item.label;
 

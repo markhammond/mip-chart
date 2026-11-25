@@ -27,6 +27,9 @@ export interface StateBarsOptions {
   colors?: string[];
   /** Toggle visibility with the carrier series. */
   isVisible?: () => boolean;
+  /** Break intervals (sorted, disjoint, UTC ms): bars end at a break's start,
+   *  resume at its end, and samples inside a break are skipped. */
+  breaks?: (u: uPlot) => ReadonlyArray<readonly [number, number]>;
 }
 
 export function stateBarsPlugin(o: StateBarsOptions): uPlot.Plugin {
@@ -63,8 +66,14 @@ export function stateBarsPlugin(o: StateBarsOptions): uPlot.Plugin {
         // Bar boundaries sit at rounded midpoints between consecutive sample
         // centers, shared so adjacent segments abut exactly (no hairline gap).
         // Keep globalAlpha off the fill so shared edges don't double-blend.
+        const brk = o.breaks?.(u) ?? [];
         const idx: number[] = [];
-        for (let i = 0; i < xs.length; i++) if (vals[i] != null) idx.push(i);
+        for (let i = 0, b = 0; i < xs.length; i++) {
+          if (vals[i] == null) continue;
+          while (b < brk.length && brk[b]![1] <= xs[i]!) b++;
+          if (b < brk.length && brk[b]![0] <= xs[i]!) continue; // inside a break
+          idx.push(i);
+        }
         if (idx.length === 0) return;
         const cxs = idx.map((i) => u.valToPos(xs[i]!, 'x', true));
 
@@ -74,10 +83,26 @@ export function stateBarsPlugin(o: StateBarsOptions): uPlot.Plugin {
         ctx.clip();
         ctx.globalAlpha = 0.85;
 
-        for (let k = 0; k < idx.length; k++) {
+        const last = idx.length - 1;
+        for (let k = 0, b = 0; k < idx.length; k++) {
           const cx = cxs[k]!;
-          const leftB = k > 0 ? (cxs[k - 1]! + cx) / 2 : cx - w / 2;
-          const rightB = k < idx.length - 1 ? (cx + cxs[k + 1]!) / 2 : cx + w / 2;
+          let leftB = k > 0 ? (cxs[k - 1]! + cx) / 2 : cx - w / 2;
+          let rightB = k < last ? (cx + cxs[k + 1]!) / 2 : cx + w / 2;
+          if (brk.length) {
+            // b → first break after this sample; b-1 → last break before it.
+            const x = xs[idx[k]!]!;
+            while (b < brk.length && brk[b]![0] <= x) b++;
+            const prev = brk[b - 1];
+            const next = brk[b];
+            if (prev && (k === 0 || prev[1] > xs[idx[k - 1]!]!)) {
+              const pe = u.valToPos(prev[1], 'x', true);
+              leftB = k === 0 ? Math.max(leftB, pe) : pe;
+            }
+            if (next && (k === last || next[0] < xs[idx[k + 1]!]!)) {
+              const ns = u.valToPos(next[0], 'x', true);
+              rightB = k === last ? Math.min(rightB, ns) : ns;
+            }
+          }
           const L = Math.round(leftB);
           const R = Math.round(rightB);
           if (R < u.bbox.left || L > u.bbox.left + u.bbox.width) continue; // off-screen

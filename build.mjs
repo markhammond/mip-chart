@@ -1,5 +1,5 @@
-// esbuild driver: `node build.mjs` bundles the library + example;
-// `--serve` hosts the live example at http://localhost:8123.
+// esbuild driver: `node build.mjs` bundles the library + examples;
+// `--serve` hosts the live examples at http://localhost:8123 (spans.html too).
 import * as esbuild from 'esbuild';
 
 const serve = process.argv.includes('--serve');
@@ -18,11 +18,11 @@ const libOptions = {
 /** Live example: a non-framework host that wires the navigator's plain-JS
  *  hooks to a synthetic data provider — the same shape any host integrates. */
 const exampleOptions = {
-  entryPoints: ['examples/main.ts'],
+  entryPoints: ['examples/main.ts', 'examples/spans.ts'],
   bundle: true,
   format: 'esm',
   sourcemap: true,
-  outfile: 'examples/dist/main.js',
+  outdir: 'examples/dist',
   logLevel: 'info',
 };
 
