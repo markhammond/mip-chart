@@ -108,7 +108,6 @@ document.getElementById('snapshot')!.addEventListener('click', () => {
     recipe: snap.recipe,
     extent: snap.extent,
     barMs: snap.barMs,
-    initialVisible: snap.visible,
     hooks: { requestFrame: () => {} },
   });
   host.scrollIntoView({ behavior: 'smooth' });

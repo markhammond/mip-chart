@@ -279,6 +279,7 @@ export class ChartNavigator {
     this.opts = { settleMs: 200, pointsPerPx: 2, ...options };
     const initialVisible =
       options.initialVisible ??
+      options.snapshot?.visible ?? // a snapshot reopens at the window it captured
       { from: options.extent.to - 1000 * options.barMs, to: options.extent.to };
 
     this.axis = new TimeAxis(options.extent, initialVisible);

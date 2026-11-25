@@ -371,7 +371,8 @@ export interface NavigatorOptions {
   hooks: NavigatorHooks;
   /** Full navigable extent, known up front. */
   extent: TimeRange;
-  /** Initial visible window (defaults to the most recent `initialBars`·barMs). */
+  /** Initial visible window (defaults to the snapshot's captured window, else
+   *  the most recent `initialBars`·barMs). */
   initialVisible?: TimeRange;
   /** Nominal bar duration, used for candle width + gesture step heuristics. */
   barMs: number;
