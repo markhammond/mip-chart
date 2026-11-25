@@ -3,7 +3,7 @@
 // alignment, autofit or percent mode. Also the break model for line series.
 
 import type uPlot from 'uplot';
-import type { SeriesDef, SpanHatch, SpanStyle } from './types';
+import type { ExcelPattern, SeriesDef, SpanHatch, SpanStyle } from './types';
 import { lowerBound, type SeriesStore } from './seriesStore';
 
 /** Half-open time interval [start, end) in UTC ms. */
@@ -84,6 +84,28 @@ function collectSpans(store: SeriesStore, def: SeriesDef, hi: number, from: numb
     out.push({ start, end: e, cat: catAt(cats, i), idx: i });
   }
   return out;
+}
+
+/**
+ * Time at which to describe spans on hover. Over data the tooltip shows the
+ * nearest sample `x`, so spans are taken at `x` and the session row agrees with
+ * the bar. Over a gap (a weekend), where the nearest sample lies across it, they
+ * are taken at the cursor time `rawX`. The cursor counts as over data when it is
+ * within one local step of `x`: the smaller of its two neighbour gaps.
+ */
+export function spanHoverTime(xs: ArrayLike<number>, x: number, rawX: number): number {
+  let i = 0;
+  let hi = xs.length;
+  while (i < hi) {
+    const m = (i + hi) >>> 1;
+    if (xs[m]! < x) i = m + 1;
+    else hi = m;
+  }
+  if (i >= xs.length || xs[i] !== x) return rawX;
+  const prev = i > 0 ? x - xs[i - 1]! : Number.POSITIVE_INFINITY;
+  const next = i < xs.length - 1 ? xs[i + 1]! - x : Number.POSITIVE_INFINITY;
+  const step = Math.min(prev, next);
+  return Number.isFinite(step) && Math.abs(rawX - x) <= step ? x : rawX;
 }
 
 /** vlines with t in [from, to], in time order. */
@@ -256,6 +278,39 @@ export function opaque(color: string): string {
   return c;
 }
 
+/** Excel's fill patterns as 8×8 bitmaps: one byte per row, high bit leftmost,
+ *  rows repeating to eight. `label` is Excel's Format Cells name. */
+export const EXCEL_PATTERNS: Record<ExcelPattern, { label: string; rows: readonly number[] }> = {
+  solid: { label: 'Solid', rows: [0xff] },
+  darkGray: { label: '75% Gray', rows: [0x77, 0xdd] },
+  mediumGray: { label: '50% Gray', rows: [0xaa, 0x55] },
+  lightGray: { label: '25% Gray', rows: [0x88, 0x22] },
+  gray125: { label: '12.5% Gray', rows: [0x88, 0x00, 0x22, 0x00] },
+  gray0625: { label: '6.25% Gray', rows: [0x80, 0x00, 0x08, 0x00] },
+  darkHorizontal: { label: 'Horizontal Stripe', rows: [0xff, 0xff, 0x00, 0x00] },
+  darkVertical: { label: 'Vertical Stripe', rows: [0xcc] },
+  darkDown: { label: 'Reverse Diagonal Stripe', rows: [0xcc, 0x66, 0x33, 0x99] },
+  darkUp: { label: 'Diagonal Stripe', rows: [0x33, 0x66, 0xcc, 0x99] },
+  darkGrid: { label: 'Diagonal Crosshatch', rows: [0xcc, 0xcc, 0x33, 0x33] },
+  darkTrellis: { label: 'Thick Diagonal Crosshatch', rows: [0xff, 0x66, 0xff, 0x99] },
+  lightHorizontal: { label: 'Thin Horizontal Stripe', rows: [0xff, 0x00, 0x00, 0x00] },
+  lightVertical: { label: 'Thin Vertical Stripe', rows: [0x88] },
+  lightDown: { label: 'Thin Reverse Diagonal Stripe', rows: [0x88, 0x44, 0x22, 0x11] },
+  lightUp: { label: 'Thin Diagonal Stripe', rows: [0x11, 0x22, 0x44, 0x88] },
+  lightGrid: { label: 'Thin Horizontal Crosshatch', rows: [0xff, 0x88, 0x88, 0x88] },
+  lightTrellis: { label: 'Thin Diagonal Crosshatch', rows: [0x88, 0x55, 0x22, 0x55] },
+};
+
+/** The Excel bitmap for `pattern`, or undefined for a drawn pattern. */
+export function excelBitmap(pattern: SpanHatch['pattern']): readonly number[] | undefined {
+  return (EXCEL_PATTERNS as Record<string, { rows: readonly number[] } | undefined>)[pattern]?.rows;
+}
+
+/** Whether pixel (`col`, `row`) of an Excel bitmap is set. */
+function excelPixel(rows: readonly number[], col: number, row: number): boolean {
+  return (rows[row % rows.length]! & (0x80 >> col)) !== 0;
+}
+
 /** CSS `background` for a category's legend swatch (hatch over fill). */
 export function spanSwatchCss(def: SeriesDef, style: SpanStyle | undefined): string {
   if (def.renderer === 'vline' || !style) return spanInkColor(def, style);
@@ -263,9 +318,18 @@ export function spanSwatchCss(def: SeriesDef, style: SpanStyle | undefined): str
   const fill = style.fill ?? (h ? 'transparent' : spanInkColor(def, style));
   if (!h) return fill;
   const c = h.color ?? DEFAULT_HATCH_COLOR;
+  const bitmap = excelBitmap(h.pattern);
+  if (bitmap) {
+    let d = '';
+    for (let r = 0; r < 8; r++) for (let col = 0; col < 8; col++) if (excelPixel(bitmap, col, r)) d += `M${col} ${r}h1v1h-1z`;
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" shape-rendering="crispEdges">' +
+      `<path fill="${c}" d="${d}"/></svg>`;
+    return [`url("data:image/svg+xml,${encodeURIComponent(svg)}") 0 0 / 8px 8px`, fill].join(', ');
+  }
   const stripe = (deg: number) =>
     `repeating-linear-gradient(${deg}deg, ${c} 0 1px, transparent 1px 3.5px)`;
-  const layers: Record<SpanHatch['pattern'], string[]> = {
+  const layers: Record<Exclude<SpanHatch['pattern'], ExcelPattern>, string[]> = {
     diagonal: [stripe(-45)],
     'back-diagonal': [stripe(45)],
     'diagonal-cross': [stripe(45), stripe(-45)],
@@ -273,12 +337,22 @@ export function spanSwatchCss(def: SeriesDef, style: SpanStyle | undefined): str
     vertical: [stripe(90)],
     cross: [stripe(0), stripe(90)],
     dots: [`radial-gradient(circle, ${c} 0.8px, transparent 1.2px) 0 0 / 3.5px 3.5px`],
+    checker: [`repeating-conic-gradient(${c} 0 25%, transparent 0 50%) 0 0 / 4px 4px`],
   };
-  return [...layers[h.pattern], fill].join(', ');
+  return [...layers[h.pattern as Exclude<SpanHatch['pattern'], ExcelPattern>], fill].join(', ');
 }
 
 const hatchTiles = new Map<string, HTMLCanvasElement>();
 const hatchPatterns = new WeakMap<CanvasRenderingContext2D, Map<string, CanvasPattern | null>>();
+
+/** Hatch tile side in device px: the pattern's repeat period. A checker tile is
+ *  kept even so its two squares match; an Excel tile is a multiple of 8 so each
+ *  bitmap pixel covers whole device pixels. */
+export function hatchTileSize(h: SpanHatch, dpr: number): number {
+  if (excelBitmap(h.pattern)) return Math.max(8, Math.round(((h.spacingPx ?? 8) * dpr) / 8) * 8);
+  const size = Math.max(2, Math.round((h.spacingPx ?? 6) * dpr));
+  return h.pattern === 'checker' ? size + (size % 2) : size;
+}
 
 /** Repeating hatch pattern for `ctx`, cached per style + devicePixelRatio. */
 export function hatchPattern(
@@ -293,7 +367,7 @@ export function hatchPattern(
   let tile = hatchTiles.get(key);
   if (!tile) {
     tile = document.createElement('canvas');
-    const size = Math.max(2, Math.round((h.spacingPx ?? 6) * dpr));
+    const size = hatchTileSize(h, dpr);
     tile.width = tile.height = size;
     const c = tile.getContext('2d');
     if (c) paintHatchTile(c, h, size, (h.widthPx ?? 1) * dpr);
@@ -306,6 +380,12 @@ export function hatchPattern(
 
 function paintHatchTile(c: CanvasRenderingContext2D, h: SpanHatch, s: number, lw: number): void {
   c.fillStyle = c.strokeStyle = h.color ?? DEFAULT_HATCH_COLOR;
+  const bitmap = excelBitmap(h.pattern);
+  if (bitmap) {
+    const px = s / 8;
+    for (let r = 0; r < 8; r++) for (let col = 0; col < 8; col++) if (excelPixel(bitmap, col, r)) c.fillRect(col * px, r * px, px, px);
+    return;
+  }
   c.lineWidth = lw;
   const mid = Math.floor((s - lw) / 2);
   // Diagonals repeat at ±s so corner fragments tile seamlessly.
@@ -348,14 +428,30 @@ function paintHatchTile(c: CanvasRenderingContext2D, h: SpanHatch, s: number, lw
       c.arc(s / 2, s / 2, Math.max(0.5, lw), 0, Math.PI * 2);
       c.fill();
       break;
+    case 'checker':
+      c.fillRect(0, 0, s / 2, s / 2);
+      c.fillRect(s / 2, s / 2, s / 2, s / 2);
+      break;
   }
 }
 
 // ---------------------------------------------------------------- drawing
 
+/** Font for span labels (CSS px, CSS weight, CSS family). */
+export interface LabelFont {
+  sizePx: number;
+  weight: string;
+  family: string;
+}
+
+/** The legend strip's own font: the label default when its computed style is unavailable. */
+export const DEFAULT_LABEL_FONT: LabelFont = { sizePx: 12, weight: '400', family: 'system-ui, sans-serif' };
+
 export interface SpanLayerOptions {
   /** Span series drawn in this pane. */
   defs: SeriesDef[];
+  /** Default label font (the legend entries'); DEFAULT_LABEL_FONT when absent. */
+  labelFont?: () => LabelFont;
   store(key: string): SeriesStore | undefined;
   visible(def: SeriesDef, cat: number): boolean;
   /** Whether this pane draws the series' static category labels. */
@@ -423,7 +519,7 @@ function drawRects(
       const pattern = hatchPattern(ctx, style.hatch, dpr);
       if (pattern) {
         // Anchor the hatch to time so it pans with the data.
-        const pitch = Math.max(2, Math.round((style.hatch.spacingPx ?? 6) * dpr));
+        const pitch = hatchTileSize(style.hatch, dpr);
         const ox = ((toPx(0) % pitch) + pitch) % pitch;
         if (typeof DOMMatrix !== 'undefined') pattern.setTransform(new DOMMatrix([1, 0, 0, 1, ox, top]));
         ctx.fillStyle = pattern;
@@ -437,7 +533,7 @@ function drawRects(
       if (sides !== 'start' && s.end <= xMax) strokeVLine(ctx, toPx(s.end), top, height, edge, dpr);
     }
     if (labels && style?.label) {
-      drawSpanLabel(ctx, style.label, x0, x0 + w, top, height, spanInkColor(def, style), dpr, false);
+      drawSpanLabel(ctx, style.label, x0, x0 + w, top, height, spanInkColor(def, style), dpr, false, o.labelFont?.());
     }
   }
 }
@@ -470,7 +566,7 @@ function drawLines(
     };
     strokeVLine(ctx, x, top, height, edge, dpr);
     if (labels && style?.label) {
-      drawSpanLabel(ctx, style.label, x, x, top, height, edge.color, dpr, true);
+      drawSpanLabel(ctx, style.label, x, x, top, height, edge.color, dpr, true, o.labelFont?.());
     }
   }
 }
@@ -496,7 +592,7 @@ function strokeVLine(
   ctx.setLineDash([]);
 }
 
-function drawSpanLabel(
+export function drawSpanLabel(
   ctx: CanvasRenderingContext2D,
   label: NonNullable<SpanStyle['label']>,
   x0: number,
@@ -506,23 +602,41 @@ function drawSpanLabel(
   color: string,
   dpr: number,
   isLine: boolean,
+  font: LabelFont = DEFAULT_LABEL_FONT,
 ): void {
   const pad = 3 * dpr;
-  ctx.font = `${Math.round(10 * dpr)}px system-ui, sans-serif`;
-  const tw = ctx.measureText(label.text).width;
-  const pos = label.position ?? 'top-left';
-  if (!isLine && x1 - x0 < tw + 2 * pad) return; // doesn't fit the span
-  ctx.fillStyle = color;
-  ctx.textBaseline = pos === 'inside' ? 'middle' : 'top';
-  const y = pos === 'inside' ? top + height / 2 : top + pad;
-  if (pos === 'top-left') {
-    ctx.textAlign = 'left';
-    ctx.fillText(label.text, x0 + pad, y);
-  } else if (isLine && pos === 'inside') {
-    ctx.textAlign = 'left';
-    ctx.fillText(label.text, x0 + pad, y);
-  } else {
-    ctx.textAlign = 'center';
-    ctx.fillText(label.text, (x0 + x1) / 2, y);
+  const lines = label.text.split('\n');
+  const widest = (px: number) => {
+    ctx.font = `${label.fontWeight ?? font.weight} ${Math.round(px * dpr)}px ${font.family}`;
+    return Math.max(...lines.map((l) => ctx.measureText(l).width));
+  };
+  let sizePx = label.fontSizePx ?? font.sizePx;
+  const tw = widest(sizePx);
+  const room = x1 - x0 - 2 * pad;
+  if (!isLine && tw > room) {
+    // Shrink to fit (width scales with size), stepping down past hinting overshoot; hide below the floor.
+    const minPx = Math.min(sizePx, label.minFontSizePx ?? 10);
+    let fit = Math.floor(((sizePx * room) / tw) * 2) / 2;
+    while (fit >= minPx && widest(fit) > room) fit -= 0.5;
+    if (fit < minPx) return;
+    sizePx = fit;
   }
+  const lineH = Math.round(sizePx * 1.2 * dpr);
+  const pos = label.position ?? 'top-left';
+  ctx.fillStyle = label.color ?? color;
+  ctx.textBaseline = pos === 'inside' ? 'middle' : 'top';
+  // Stack lines down from the top, or centre the block for 'inside'.
+  const y0 = pos === 'inside' ? top + height / 2 - ((lines.length - 1) * lineH) / 2 : top + pad;
+  const left = pos === 'top-left' || (isLine && pos === 'inside');
+  ctx.textAlign = left ? 'left' : 'center';
+  const x = left ? x0 + pad : (x0 + x1) / 2;
+  const halo = label.halo;
+  if (halo) {
+    // A stroke is centred on the glyph outline; the fill covers its inner half.
+    ctx.strokeStyle = halo.color;
+    ctx.lineWidth = 2 * (halo.widthPx ?? 1) * dpr;
+    ctx.lineJoin = 'round';
+    lines.forEach((line, k) => ctx.strokeText(line, x, y0 + k * lineH));
+  }
+  lines.forEach((line, k) => ctx.fillText(line, x, y0 + k * lineH));
 }

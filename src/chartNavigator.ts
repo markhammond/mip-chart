@@ -8,6 +8,7 @@
 import uPlot from 'uplot';
 import type {
   ChartSnapshot,
+  MinimapMark,
   NavigatorHooks,
   NavigatorOptions,
   NavigationRequest,
@@ -53,6 +54,9 @@ import {
   spanPaneIds,
   spanSwatchCss,
   spansAt,
+  spanHoverTime,
+  DEFAULT_LABEL_FONT,
+  type LabelFont,
   spansInRange,
   spansPlugin,
   subtractIntervals,
@@ -185,7 +189,9 @@ export class ChartNavigator {
   private datePicker: DateRangePicker | null = null;
   private overviewLoaded = false;
   /** Last full-extent overview fed to the minimap — captured for snapshots. */
-  private lastOverview: { xs: UtcMillis[]; values: Array<number | null> } | null = null;
+  private lastOverview: { xs: UtcMillis[]; values: Array<number | null>; marks?: MinimapMark[] } | null = null;
+  /** Host-supplied full-extent minimap marks (acceptOverview). */
+  private overviewMarks: MinimapMark[] = [];
   /** Recipe-flagged minimap-overlay series → accumulated event timestamps,
    *  widened incrementally as ranges arrive (an at-a-glance error marker). */
   private readonly minimapOverlays = new Map<
@@ -260,6 +266,8 @@ export class ChartNavigator {
   private rangeText: HTMLElement | null = null;
   private legendModel: LegendModel | null = null;
   private legendStrip: LegendStrip | null = null;
+  /** Legend entries' font, read once the strip is laid out (span label default). */
+  private legendFont: LabelFont | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeRaf = 0;
   /** Frozen snapshot (offline): one captured tier, no backend. Suppresses
@@ -507,6 +515,11 @@ export class ChartNavigator {
       this.applySeriesVisibility(key, visible),
     );
     this.legendStrip = new LegendStrip(this.root, this.legendModel);
+  }
+
+  private labelFont(): LabelFont {
+    this.legendFont ??= this.legendStrip?.entryFont() ?? null;
+    return this.legendFont ?? DEFAULT_LABEL_FONT;
   }
 
   private minimapHeight(): number {
@@ -757,6 +770,7 @@ export class ChartNavigator {
             store: (key) => this.stores.get(key),
             visible: (def, cat) => this.spanVisible(def, cat),
             labelsHere: (def) => this.spanLabelPane(def) === paneDef.id,
+            labelFont: () => this.labelFont(),
           }),
         );
       }
@@ -1558,6 +1572,7 @@ export class ChartNavigator {
   private pushMinimapOverlay(): void {
     if (!this.minimap) return;
     const pts: Array<{ t: UtcMillis; to?: UtcMillis; color: string }> = [];
+    for (const m of this.overviewMarks) pts.push({ t: m.t, to: m.to ?? undefined, color: m.color });
     for (const ov of this.minimapOverlays.values())
       for (const t of ov.ts) pts.push({ t, color: ov.color });
     for (const ov of this.minimapSpanOverlays.values())
@@ -1944,12 +1959,15 @@ export class ChartNavigator {
     this.opts.hooks.requestOverview?.({ maxPoints: Math.max(200, width) });
   }
 
-  /** Host delivers the full-extent overview series. */
-  acceptOverview(xs: UtcMillis[], values: Array<number | null>): void {
+  /** Host delivers the full-extent overview series, plus any full-extent
+   *  minimap marks (drawn beneath the fetched `minimapOverlay` events). */
+  acceptOverview(xs: UtcMillis[], values: Array<number | null>, marks?: MinimapMark[]): void {
     if (this.destroyed || !this.minimap) return;
     this.overviewLoaded = true;
-    this.lastOverview = { xs, values };
+    this.lastOverview = { xs, values, marks: marks ? [...marks] : undefined };
     this.minimap.setOverview(xs, values);
+    this.overviewMarks = marks ?? [];
+    this.pushMinimapOverlay();
   }
 
   /**
@@ -1976,7 +1994,11 @@ export class ChartNavigator {
       hidden: this.legendModel?.items.filter((i) => !i.visible).map((i) => i.key) ?? [],
       stores,
       overview: this.lastOverview
-        ? { xs: [...this.lastOverview.xs], values: [...this.lastOverview.values] }
+        ? {
+            xs: [...this.lastOverview.xs],
+            values: [...this.lastOverview.values],
+            ...(this.lastOverview.marks ? { marks: [...this.lastOverview.marks] } : {}),
+          }
         : null,
     };
   }
@@ -2005,7 +2027,7 @@ export class ChartNavigator {
     if (snap.percentMode) this.setPercentMode(true);
     this.renderActiveTier();
     this.updateSkeletonState();
-    if (snap.overview) this.acceptOverview(snap.overview.xs, snap.overview.values);
+    if (snap.overview) this.acceptOverview(snap.overview.xs, snap.overview.values, snap.overview.marks);
   }
 
   /** Minimap sketch: until the full overview arrives, show the loaded
@@ -2204,7 +2226,10 @@ export class ChartNavigator {
       }
     }
     const spanRefs: PointRef[] = [];
-    if (this.spanDefs.length && rawX != null) this.addSpanHoverRows(pane, rawX, grouped, spanRefs);
+    if (this.spanDefs.length && rawX != null) {
+      const rectT = spanHoverTime(pane.plot.data[0] as ArrayLike<number>, x, rawX);
+      this.addSpanHoverRows(pane, rectT, rawX, grouped, spanRefs);
+    }
     for (const [group, rows] of grouped) {
       if (group) entries.push({ text: group, group: true });
       entries.push(...rows);
@@ -2253,10 +2278,12 @@ export class ChartNavigator {
     }, 80);
   }
 
-  /** Hover rows for visible spans covering time `t` and vlines within
-   *  VLINE_HOVER_PX of it; collects their detail refs (series key + start). */
+  /** Hover rows for visible spans covering `rectT` and vlines within
+   *  VLINE_HOVER_PX of the cursor time `t`; collects their detail refs (series
+   *  key + start). */
   private addSpanHoverRows(
     pane: PaneRuntime,
+    rectT: number,
     t: number,
     grouped: Map<string, TooltipEntry[]>,
     refs: PointRef[],
@@ -2272,7 +2299,7 @@ export class ChartNavigator {
       if (!store?.length) continue;
       const hits =
         def.renderer === 'vrect'
-          ? spansAt(store, def, t).map((sp) => ({ x: sp.start, cat: sp.cat, idx: sp.idx }))
+          ? spansAt(store, def, rectT).map((sp) => ({ x: sp.start, cat: sp.cat, idx: sp.idx }))
           : linesNear(store, def, t, tolMs).map((l) => ({ x: l.t, cat: l.cat, idx: l.idx }));
       for (const h of hits) {
         if (!this.spanVisible(def, h.cat)) continue;

@@ -22,7 +22,32 @@ export type SeriesRenderer =
   | 'vrect' // shaded time spans (sessions, event windows)
   | 'vline'; // vertical lines at event times
 
-/** Excel-style hatch overlay for a span category. */
+/**
+ * Excel's cell fill patterns, by their Office Open XML names (`patternFill
+ * patternType`); Excel's Format Cells names in brackets. Each is Excel's 8×8
+ * pixel bitmap.
+ */
+export type ExcelPattern =
+  | 'solid' // Solid
+  | 'darkGray' // 75% Gray
+  | 'mediumGray' // 50% Gray
+  | 'lightGray' // 25% Gray
+  | 'gray125' // 12.5% Gray
+  | 'gray0625' // 6.25% Gray
+  | 'darkHorizontal' // Horizontal Stripe
+  | 'darkVertical' // Vertical Stripe
+  | 'darkDown' // Reverse Diagonal Stripe
+  | 'darkUp' // Diagonal Stripe
+  | 'darkGrid' // Diagonal Crosshatch
+  | 'darkTrellis' // Thick Diagonal Crosshatch
+  | 'lightHorizontal' // Thin Horizontal Stripe
+  | 'lightVertical' // Thin Vertical Stripe
+  | 'lightDown' // Thin Reverse Diagonal Stripe
+  | 'lightUp' // Thin Diagonal Stripe
+  | 'lightGrid' // Thin Horizontal Crosshatch
+  | 'lightTrellis'; // Thin Diagonal Crosshatch
+
+/** Hatch overlay for a span category: a drawn line pattern or one of Excel's fill patterns. */
 export interface SpanHatch {
   pattern:
     | 'diagonal'
@@ -31,10 +56,14 @@ export interface SpanHatch {
     | 'diagonal-cross'
     | 'horizontal'
     | 'vertical'
-    | 'dots';
+    | 'dots'
+    | 'checker'
+    | ExcelPattern;
   /** Hatch ink colour (default a translucent grey). */
   color?: string;
-  /** Line pitch in CSS px (default 6). */
+  /** Line pitch in CSS px (default 6); for 'checker', the repeat period of two
+   *  squares; for an Excel pattern, the 8×8 bitmap's size (default 8, one CSS
+   *  px per bitmap pixel). */
   spacingPx?: number;
   /** Line width (dot radius for 'dots') in CSS px (default 1). */
   widthPx?: number;
@@ -55,8 +84,22 @@ export interface SpanStyle {
     /** vrect only (default 'both'). */
     sides?: 'both' | 'start' | 'end';
   };
-  /** Static text drawn once, in the topmost visible pane the series covers. */
-  label?: { text: string; position?: 'top-left' | 'top' | 'inside' };
+  /** Static text drawn once, in the topmost visible pane the series covers.
+   *  `\n` stacks lines; `color` defaults to the category's ink (its edge,
+   *  hatch or fill colour without alpha); `fontSizePx` and `fontWeight` default
+   *  to the legend entries' font. `halo` outlines the glyphs so text stays
+   *  legible over data; its width is what shows outside them (CSS px, default 1).
+   *  A label too wide for its span shrinks to fit, down to `minFontSizePx`
+   *  (default 10), and is hidden below that. */
+  label?: {
+    text: string;
+    position?: 'top-left' | 'top' | 'inside';
+    color?: string;
+    fontSizePx?: number;
+    fontWeight?: number | string;
+    minFontSizePx?: number;
+    halo?: { color: string; widthPx?: number };
+  };
   /** vrect only: line, band and state-bar series in the covered panes don't
    *  connect across (or draw inside) these spans. */
   breaks?: boolean;
@@ -315,6 +358,17 @@ export interface OverviewRequest {
 }
 
 /**
+ * A full-extent minimap mark the host supplies with the overview: a dot at `t`,
+ * or a bar from `t` to `to`. Unlike `minimapOverlay` series, which mark only
+ * what has been fetched, these show from the first frame.
+ */
+export interface MinimapMark {
+  t: UtcMillis;
+  to?: UtcMillis | null;
+  color: string;
+}
+
+/**
  * The host boundary. The host application (e.g. a framework binding or test
  * harness) supplies these plain-JS callbacks; the library never imports host
  * code.
@@ -328,8 +382,9 @@ export interface NavigatorHooks {
   requestFrame(req: NavigationRequest): void;
   /**
    * The minimap wants a full-extent overview series (refined detail).
-   * The host responds via ChartNavigator.acceptOverview. Optional — without
-   * it the minimap shows only the coarse sketch from loaded data.
+   * The host responds via ChartNavigator.acceptOverview, optionally with
+   * full-extent marks. Optional — without it the minimap shows only the
+   * coarse sketch from loaded data.
    */
   requestOverview?(req: OverviewRequest): void;
   /** Lazy hover detail. Resolve to plain text lines, or null for none. */
@@ -359,7 +414,7 @@ export interface ChartSnapshot {
   /** Per-series columnar data currently in memory (covers the viewport). */
   stores: Array<{ key: string; xs: number[]; columns: Record<string, Array<number | null>> }>;
   /** Minimap full-extent overview, if one was loaded. */
-  overview: { xs: number[]; values: Array<number | null> } | null;
+  overview: { xs: number[]; values: Array<number | null>; marks?: MinimapMark[] } | null;
 }
 
 export interface NavigatorOptions {

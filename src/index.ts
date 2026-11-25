@@ -17,7 +17,7 @@ export { tvLadderCeil, tvLinearTicks, tvLogTicks, tvPercentTicks, TV_TICK_DENSIT
 export { LegendModel } from './legendModel';
 export type { LegendItem } from './legendModel';
 export { stateColor, DEFAULT_STATE_COLORS } from './stateBars';
-export { coalesceSpans, breakIntervals, breakGapsPx, spansAt, linesNear } from './spans';
+export { coalesceSpans, breakIntervals, breakGapsPx, spansAt, linesNear, spanHoverTime, EXCEL_PATTERNS } from './spans';
 export type { Span, VLine, Interval } from './spans';
 export type {
   UtcMillis,
@@ -28,10 +28,12 @@ export type {
   SeriesDef,
   SpanStyle,
   SpanHatch,
+  ExcelPattern,
   ViewRecipe,
   SeriesFragment,
   NavigationRequest,
   OverviewRequest,
+  MinimapMark,
   PointRef,
   PointAction,
   NavigatorHooks,
